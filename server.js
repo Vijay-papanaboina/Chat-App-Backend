@@ -1,9 +1,18 @@
 const express = require('express');
 const cors = require('cors');
 const {Pool} = require('pg');
+const http = require("http");
+const { Server } = require("socket.io");
 require('dotenv').config();
 
 const app = express();
+
+const server = http.createServer(app); // Create HTTP server
+const io = new Server(server, {
+  cors: { origin: "*" },
+});
+
+
 app.use(express.json());
 app.use(cors());
 
@@ -14,6 +23,57 @@ const pool = new Pool({
   database: process.env.DB_NAME,
   password: process.env.DB_PASS,
   port: process.env.DB_PORT, // Default PostgreSQL port
+});
+
+
+
+
+// Store connected users
+const connectedUsers = {};
+
+
+
+io.on("connection", (socket) => {
+  console.log("A user connected:", socket.id);
+
+  socket.on("registerUser", (userId) => {
+    connectedUsers[userId] = socket.id;
+    console.log("Registered Users:", connectedUsers);
+  });
+
+  socket.on("sendMessage", async (data) => {
+    const { sender, receiver, message_text } = data;
+
+    try {
+      const result = await pool.query(
+        "INSERT INTO messages (sender, receiver, message_text) VALUES ($1, $2, $3) RETURNING *",
+        [sender, receiver, message_text]
+      );
+
+      const message = result.rows[0];
+
+      // Send message to the receiver if they are online
+      if (connectedUsers[receiver]) {
+        io.to(connectedUsers[receiver]).emit("newMessage", message);
+      }
+
+      // Send message to sender as well
+      io.to(socket.id).emit("newMessage", message);
+      console.log("newMessage", message);
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
+    for (const userId in connectedUsers) {
+      if (connectedUsers[userId] === socket.id) {
+        delete connectedUsers[userId];
+        break;
+      }
+    }
+  });
 });
 
 
@@ -53,13 +113,11 @@ app.get("/users", async (req, res) => {
 // Fetch messages between two users
 app.get("/messages", async (req, res) => {
   const { chatWith, currentUser } = req.query;
-  console.log(chatWith, currentUser);
   try {
     const result = await pool.query(
       "SELECT * FROM messages WHERE (sender = $1 AND receiver = $2) OR (sender = $2 AND receiver = $1) ORDER BY created_at",
       [chatWith, currentUser]
     );
-    console.log("users", result.rows);
     res.json(result.rows);
   } catch (error) {
     console.error("Error fetching messages:", error);
@@ -68,21 +126,10 @@ app.get("/messages", async (req, res) => {
 });
 
 
-// Send a message
-app.post("/sendMessages", async (req, res) => {
-  const { sender, receiver, message_text } = req.body;
-  console.log("from send message",sender, receiver, message_text);
-  try {
-    const result = await pool.query(
-      "INSERT INTO messages (sender, receiver, message_text) VALUES ($1, $2, $3) RETURNING *",
-      [sender, receiver, message_text]
-    );
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error("Error sending message:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-app.listen(3000, () => {
+server.listen(3000, () => {
   console.log("Server is running on port 3000");})
+
+
+
+
+
