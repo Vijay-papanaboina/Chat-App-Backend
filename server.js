@@ -3,6 +3,9 @@ const cors = require('cors');
 const {Pool} = require('pg');
 const http = require("http");
 const { Server } = require("socket.io");
+const multer = require("multer");
+const upload = multer(); 
+const {supabase} = require("./supabase.js");
 require('dotenv').config();
 
 const app = express();
@@ -26,7 +29,9 @@ const pool = new Pool({
 });
 
 
-
+pool.on("error", (err) => {
+  console.error("Unexpected Pool error:");
+});
 
 // Store connected users
 const connectedUsers = {};
@@ -38,7 +43,10 @@ io.on("connection", (socket) => {
 
   socket.on("registerUser", (userId) => {
     connectedUsers[userId] = socket.id;
-    console.log("Registered Users:", connectedUsers);
+    console.log("Online Users:", Object.keys(connectedUsers).length);
+
+    // Send updated online users list to all clients
+    io.emit("onlineUsers", Object.keys(connectedUsers));
   });
 
   socket.on("sendMessage", async (data) => {
@@ -65,11 +73,41 @@ io.on("connection", (socket) => {
     }
   });
 
+
+
+
+  socket.on("markAsRead", async ({ chat_id, user_id }) => {
+    try {
+      await pool.query(
+        `UPDATE messages SET message_read = true 
+        WHERE sender = $1 AND receiver = $2 AND message_read = false`,
+        [chat_id, user_id]
+      );
+
+      // Notify the sender that messages are read
+      const senderSocketId = connectedUsers[chat_id];
+      if (senderSocketId) {
+        io.to(senderSocketId).emit("messagesRead", { chat_id, user_id });
+      }
+
+      console.log(`Messages marked as read for chat: ${chat_id}`);
+    } catch (error) {
+      console.error("Error marking messages as read:", error);
+    }
+  });
+
+
+
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
     for (const userId in connectedUsers) {
       if (connectedUsers[userId] === socket.id) {
         delete connectedUsers[userId];
+
+        console.log("User disconnected:", socket.id);
+        console.log( "Registered Users:", Object.keys(connectedUsers).length);
+
+        io.emit("onlineUsers", Object.keys(connectedUsers));
+ 
         break;
       }
     }
@@ -78,11 +116,74 @@ io.on("connection", (socket) => {
 
 
 
+
+
+
+async function updateUserProfile(userId, name, imageUrl) {
+  try {
+    await pool.query(
+      "UPDATE profiles SET app_name = $1, profile_pic = $2 WHERE id = $3",
+      [name, imageUrl, userId]
+    );
+  } catch (error) {
+    console.error("Database Error: Failed to update profile.");
+    throw new Error("Database update failed");
+  }
+}
+
+app.post("/upload-profile", upload.single("file"), async (req, res) => {
+  try {
+    // Validate request body
+    const { userId, name } = req.body;
+    if (!userId || !name || !req.file) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Missing required fields" });
+    }
+
+    const fileExtension = req.file.originalname.split(".").pop(); // Extract extension
+    const fileName = `${userId}.${fileExtension}`; // e.g., "38c59c1b-7764-43bd-8ba4-052e44dca501.jpg"
+
+    // Upload file to Supabase storage bucket
+    const { data, error } = await supabase.storage
+      .from("chat-app")
+      .upload(`users/profile_pics/${fileName}`, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: true,
+      });
+
+    if (error) {
+      console.error("Supabase Upload Error:", error);
+      return res
+        .status(500)
+        .json({ success: false, error: "Failed to upload profile picture" });
+    }
+
+    let publicURL = `https://phkzagefjrpswkdxvegp.supabase.co/storage/v1/object/public/chat-app/users/profile_pics/${fileName}`;
+
+    // Update user profile
+    await updateUserProfile(userId, name, publicURL);
+
+    res.json({ success: true, imageUrl: publicURL });
+  } catch (error) {
+    console.error("Unexpected Error in /upload-profile:", error.stack);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+
+
+
+
+
+
+
+
 app.get("/currentUser", async (req, res) => {
   try {
     const userId = req.query.userId?.trim().replace(/^"|"$/g, ""); // Trim spaces & remove extra quotes
     const result = await pool.query(
-      "SELECT id, full_name, app_name, profile_pic FROM profiles WHERE id = $1",
+      "SELECT id, full_name, app_name,app_name_temp, profile_pic FROM profiles WHERE id = $1",
       [userId]
     );
     res.json(result.rows);
@@ -99,7 +200,7 @@ app.get("/users", async (req, res) => {
   try {
     const excludeId = req.query.excludeId?.trim().replace(/^"|"$/g, ""); // Trim spaces & remove extra quotes
     const result = await pool.query(
-      "SELECT id, full_name, app_name, profile_pic FROM profiles WHERE id != $1",
+      "SELECT id, full_name, app_name,app_name_temp, profile_pic FROM profiles WHERE id != $1",
       [excludeId]
     );
     res.json(result.rows);
@@ -108,6 +209,28 @@ app.get("/users", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+
+
+app.get("/get-unread-messages/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const result = await pool.query(
+      `SELECT sender, COUNT(*) AS unread_count
+            FROM messages
+            WHERE receiver = $1 AND message_read = FALSE
+            GROUP BY sender;`,
+      [userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching unread messages:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+
 
 
 // Fetch messages between two users
@@ -128,8 +251,3 @@ app.get("/messages", async (req, res) => {
 
 server.listen(3000, () => {
   console.log("Server is running on port 3000");})
-
-
-
-
-
