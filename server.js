@@ -1,12 +1,12 @@
-const express = require('express');
-const cors = require('cors');
-const {Pool} = require('pg');
+const express = require("express");
+const cors = require("cors");
+const { Pool } = require("pg");
 const http = require("http");
 const { Server } = require("socket.io");
 const multer = require("multer");
-const upload = multer(); 
-const {supabase} = require("./supabase.js");
-require('dotenv').config();
+const upload = multer();
+const { supabase } = require("./supabase.js");
+require("dotenv").config();
 
 const app = express();
 
@@ -15,10 +15,8 @@ const io = new Server(server, {
   cors: { origin: "*" },
 });
 
-
 app.use(express.json());
 app.use(cors());
-
 
 const pool = new Pool({
   user: process.env.DB_USER,
@@ -28,15 +26,12 @@ const pool = new Pool({
   port: process.env.DB_PORT, // Default PostgreSQL port
 });
 
-
 pool.on("error", (err) => {
   console.error("Unexpected Pool error:");
 });
 
 // Store connected users
 const connectedUsers = {};
-
-
 
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
@@ -73,9 +68,6 @@ io.on("connection", (socket) => {
     }
   });
 
-
-
-
   socket.on("markAsRead", async ({ chat_id, user_id }) => {
     try {
       await pool.query(
@@ -96,28 +88,21 @@ io.on("connection", (socket) => {
     }
   });
 
-
-
   socket.on("disconnect", () => {
     for (const userId in connectedUsers) {
       if (connectedUsers[userId] === socket.id) {
         delete connectedUsers[userId];
 
         console.log("User disconnected:", socket.id);
-        console.log( "Registered Users:", Object.keys(connectedUsers).length);
+        console.log("Registered Users:", Object.keys(connectedUsers).length);
 
         io.emit("onlineUsers", Object.keys(connectedUsers));
- 
+
         break;
       }
     }
   });
 });
-
-
-
-
-
 
 async function updateUserProfile(userId, name, imageUrl) {
   try {
@@ -173,11 +158,49 @@ app.post("/upload-profile", upload.single("file"), async (req, res) => {
 
 
 
+app.get("/get-chat-user", async( req, res) => {
+  try{
+    const chatUserId=req.query.UserId
+
+     results = await pool.query(
+       `SELECT id, full_name, app_name,app_name_temp, profile_pic
+       FROM profiles
+       WHERE id = $1`,
+       [chatUserId]
+     );
+    console.log("chatUser: ", results.rows)
+      res.status(200).json(results.rows[0])
+  } catch (err) { 
+    console.log("Error getting chat user: ", err)
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+   }
+});
 
 
 
 
+app.get("/searchquery", async (req, res) => {
+  const searchQuery = req.query.q;
+  const searchParam = `%${searchQuery}%`;
+  try {
+    if (!searchQuery) {
+      return res.status(400).send("Missing search query parameter.");
+    }
 
+    const results = await pool.query(
+      `SELECT id, full_name, app_name,app_name_temp, profile_pic
+         FROM profiles
+         WHERE app_name ILIKE $1 OR app_name_temp LIKE $1`,
+      [searchParam]
+    );
+
+    console.log("search: ", results.rows);
+    res.status(200).json(results.rows);
+  } catch (err) {
+    console.log("search error: ", err);
+    return res.status(400).send("Something went wrong during querying.");
+  }
+});
 
 app.get("/currentUser", async (req, res) => {
   try {
@@ -194,21 +217,29 @@ app.get("/currentUser", async (req, res) => {
 });
 
 
-
-
-app.get("/users", async (req, res) => {
+app.get("/interacted-users", async (req, res) => {
+  const currentUserId = req.query.currentUserId;
+  if (!currentUserId) {
+    return res.status(400).json({ error: "Missing currentUserId" });
+  }
   try {
-    const excludeId = req.query.excludeId?.trim().replace(/^"|"$/g, ""); // Trim spaces & remove extra quotes
-    const result = await pool.query(
-      "SELECT id, full_name, app_name,app_name_temp, profile_pic FROM profiles WHERE id != $1",
-      [excludeId]
+    const results = await pool.query(
+      `SELECT DISTINCT u.id, u.full_name, u.app_name, u.app_name_temp, u.profile_pic,
+         (SELECT COUNT(*) FROM messages m 
+           WHERE m.sender = u.id AND m.receiver = $1 AND m.message_read = false) as unread_count
+       FROM profiles u
+       JOIN messages m ON (m.sender = u.id OR m.receiver = u.id)
+       WHERE (m.sender = $1 OR m.receiver = $1) AND u.id <> $1
+       GROUP BY u.id, u.full_name, u.app_name, u.app_name_temp, u.profile_pic`,
+      [currentUserId]
     );
-    res.json(result.rows);
-  } catch (error) {
-    console.error("Error fetching users:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(200).json(results.rows);
+  } catch (err) {
+    console.error("Error fetching interacted users:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
+
 
 
 
@@ -232,7 +263,6 @@ app.get("/get-unread-messages/:userId", async (req, res) => {
 
 
 
-
 // Fetch messages between two users
 app.get("/messages", async (req, res) => {
   const { chatWith, currentUser } = req.query;
@@ -249,5 +279,9 @@ app.get("/messages", async (req, res) => {
 });
 
 
+
+
+
 server.listen(3000, () => {
-  console.log("Server is running on port 3000");})
+  console.log("Server is running on port 3000");
+});
