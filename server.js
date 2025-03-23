@@ -104,6 +104,15 @@ io.on("connection", (socket) => {
   });
 });
 
+
+
+app.get("/health", async(req, res) => {
+  res.status(200).json({success:true})
+});
+
+
+
+
 async function updateUserProfile(userId, name, imageUrl) {
   try {
     await pool.query(
