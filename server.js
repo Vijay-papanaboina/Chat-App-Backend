@@ -1,7 +1,7 @@
 // server.js
 const express = require("express");
 const cors = require("cors");
-const https = require("https");
+const http = require("http");
 const { Pool } = require("pg");
 require("dotenv").config();
 const fs = require("fs");
@@ -12,15 +12,8 @@ app.use(cors());
 
 
 
-// Load SSL certificates
-const sslOptions = {
-  key: fs.readFileSync("./certs/cert.key"),
-  cert: fs.readFileSync("./certs/cert.crt"),
-};
-
-
-// Create HTTPS server
-const server = https.createServer(sslOptions, app);
+// Create HTTP server
+const server = http.createServer(app);
 
 // Database Pool (could also be abstracted into a separate file)
 const pool = new Pool({
