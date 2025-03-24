@@ -72,6 +72,14 @@ module.exports = (io, pool) => {
       }
     });
 
+    // When the caller cancells the call, forward the answer signal to the caller
+    socket.on("cancelCall", ({ to }) => {
+      console.log("Call cancelled event received for user:", to);
+      if (connectedUsers[to]) {
+        io.to(connectedUsers[to]).emit("callCancelled");
+      }
+    });
+
     // When the callee accepts the call, forward the answer signal to the caller
     socket.on("acceptCall", ({ signal, to }) => {
       if (connectedUsers[to]) {
