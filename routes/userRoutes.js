@@ -46,7 +46,7 @@ module.exports = (pool) => {
     const searchQueryParam = req.query.q;
     const searchParam = `%${searchQueryParam}%`;
     try {
-      if (!searchQuery) {
+      if (!searchQueryParam) {
         return res.status(400).send("Missing search query parameter.");
       }
 
