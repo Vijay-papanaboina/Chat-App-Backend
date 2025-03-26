@@ -3,14 +3,39 @@ import { Router } from "express";
 const router = Router();
 
 export default (pool) => {
-  // Get messages between two users
+  // Get messages between two users with offset-based pagination
   router.get("/messages", async (req, res) => {
-    const { chatWith, currentUser } = req.query;
+    const { chatWith, currentUser, offset, limit } = req.query;
+    const offsetVal = parseInt(offset, 10) || 0;
+    const limitVal = parseInt(limit, 10) || 50;
     try {
-      const result = await pool.query(
-        "SELECT * FROM messages WHERE (sender = $1 AND receiver = $2) OR (sender = $2 AND receiver = $1) ORDER BY created_at",
-        [chatWith, currentUser]
-      );
+      console.log(`Loading messages: offset=${offsetVal}, limit=${limitVal}`);
+      const query = `
+        SELECT * FROM messages
+        WHERE (sender = $1 AND receiver = $2) OR (sender = $2 AND receiver = $1)
+        ORDER BY created_at DESC
+        LIMIT $3 OFFSET $4;
+      `;
+      const values = [chatWith, currentUser, limitVal, offsetVal];
+      const result = await pool.query(query, values);
+      res.json(result.rows);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+
+  router.get("more-/messages", async (req, res) => {
+    const { chatWith, currentUser, offset = 0, limit = 50 } = req.query;
+    try {
+      const query = `
+      SELECT * FROM messages
+      WHERE (sender = $1 AND receiver = $2) OR (sender = $2 AND receiver = $1)
+      ORDER BY created_at DESC
+      LIMIT $3 OFFSET $4;
+    `;
+      const values = [chatWith, currentUser, limit, offset];
+      const result = await pool.query(query, values);
       res.json(result.rows);
     } catch (error) {
       console.error("Error fetching messages:", error);

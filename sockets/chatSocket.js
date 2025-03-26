@@ -16,23 +16,34 @@ module.exports = (io, pool) => {
       io.emit("onlineUsers", Object.keys(connectedUsers));
     });
 
-    // Message sending remains unchanged
+    // Message sending with optimistic UI update
     socket.on("sendMessage", async (data) => {
       const { sender, receiver, message_text } = data;
+
+      // Create a message object with a timestamp (or any additional fields you need)
+      const message = {
+        sender,
+        receiver,
+        message_text,
+        created_at: new Date().toISOString(), // assuming you want to timestamp the message here
+        message_read: false,
+      };
+
+      // Immediately emit the message for an optimistic UI update
+      if (connectedUsers[receiver]) {
+        io.to(connectedUsers[receiver]).emit("newMessage", message);
+      }
+      io.to(socket.id).emit("newMessage", message);
+
+      // Insert the message into the database asynchronously
       try {
-        const result = await pool.query(
-          "INSERT INTO messages (sender, receiver, message_text) VALUES ($1, $2, $3) RETURNING *",
+        await pool.query(
+          "INSERT INTO messages (sender, receiver, message_text) VALUES ($1, $2, $3)",
           [sender, receiver, message_text]
         );
-        const message = result.rows[0];
-
-        if (connectedUsers[receiver]) {
-          io.to(connectedUsers[receiver]).emit("newMessage", message);
-        }
-        io.to(socket.id).emit("newMessage", message);
-        console.log("newMessage", message);
       } catch (error) {
         console.error("Error sending message:", error);
+        // Optionally, notify the sender that the message wasn't stored
       }
     });
 
