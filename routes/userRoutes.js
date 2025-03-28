@@ -18,6 +18,23 @@ module.exports = (pool) => {
     }
   });
 
+
+  router.post("/save-token", async (req, res) => {
+    const { userId, fcmToken } = req.body;
+    try {
+      // Save or update the token in your database.
+      // Example using SQL "upsert":
+      await pool.query(
+        "INSERT INTO user_tokens (user_id, fcm_token) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET fcm_token = EXCLUDED.fcm_token",
+        [userId, fcmToken]
+      );
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error saving token:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+
   // Get interacted users with unread message counts
   router.get("/interacted-users", async (req, res) => {
     const currentUserId = req.query.currentUserId;

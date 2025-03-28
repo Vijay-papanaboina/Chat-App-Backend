@@ -1,6 +1,7 @@
 // sockets/chatSocket.js
 const multer = require("multer");
 const upload = multer();
+const sendNotification = require("../firebase/sendNotification");
 
 module.exports = (io, pool) => {
   // Object to track connected users: maps userId to socket.id
@@ -18,14 +19,14 @@ module.exports = (io, pool) => {
 
     // Message sending with optimistic UI update
     socket.on("sendMessage", async (data) => {
-      const { sender, receiver, message_text } = data;
+      const { sender, sender_name, receiver, message_text } = data;
 
-      // Create a message object with a timestamp (or any additional fields you need)
+      // Create a message object with a timestamp
       const message = {
         sender,
         receiver,
         message_text,
-        created_at: new Date().toISOString(), // assuming you want to timestamp the message here
+        created_at: new Date().toISOString(), // Timestamp
         message_read: false,
       };
 
@@ -35,15 +36,29 @@ module.exports = (io, pool) => {
       }
       io.to(socket.id).emit("newMessage", message);
 
-      // Insert the message into the database asynchronously
       try {
+        // Insert the message into the database asynchronously
         await pool.query(
           "INSERT INTO messages (sender, receiver, message_text) VALUES ($1, $2, $3)",
           [sender, receiver, message_text]
         );
+
+        // Send a notification to the receiver if they have a registered FCM token
+        const result = await pool.query(
+          "SELECT fcm_token FROM user_tokens WHERE user_id = $1",
+          [receiver]
+        );
+
+        if (result.rows.length > 0) {
+          const receiverFcmToken = result.rows[0].fcm_token;
+
+          // Send the notification with a properly formatted message
+          await sendNotification(receiverFcmToken,sender_name, message_text);
+        }
+
       } catch (error) {
         console.error("Error sending message:", error);
-        // Optionally, notify the sender that the message wasn't stored
+        socket.emit("messageSent", { success: false, error: error.message });
       }
     });
 

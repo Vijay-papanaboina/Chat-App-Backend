@@ -7,10 +7,14 @@ require("dotenv").config();
 const fs = require("fs");
 
 const app = express();
+
+const corsOptions = {
+  origin: "*", // Change this to your client URL
+  optionsSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
+
 app.use(express.json());
-app.use(cors());
-
-
 
 // Create HTTP server
 const server = http.createServer(app);
@@ -45,7 +49,9 @@ app.get("/health", (req, res) => {
 
 // Set up Socket.IO in a separate module
 const { Server } = require("socket.io");
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {
+  cors: { origin: "*" },
+});
 require("./sockets/chatSocket")(io, pool);
 
 server.listen(3000, () => {
