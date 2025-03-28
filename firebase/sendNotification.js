@@ -4,10 +4,9 @@ const admin = require("./firebaseAdmin");
 const sendNotification = async (receiverFcmToken, sender_name, message) => {
   const payload = {
     data: {
-      title: `New Message from ${sender_name}`,
+      title: `Message from ${sender_name}`,
       body: message,
-      // Optionally add an icon or click_action
-      // icon: "path/to/icon.png",
+      icon: "http://localhost:5173/message.png",
       // click_action: "FLUTTER_NOTIFICATION_CLICK"  // if using Flutter, for example
     },
     token: receiverFcmToken,
