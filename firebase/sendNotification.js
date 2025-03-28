@@ -3,7 +3,7 @@ const admin = require("./firebaseAdmin");
 
 const sendNotification = async (receiverFcmToken, sender_name, message) => {
   const payload = {
-    notification: {
+    data: {
       title: `New Message from ${sender_name}`,
       body: message,
       // Optionally add an icon or click_action
