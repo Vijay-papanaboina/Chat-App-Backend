@@ -6,7 +6,7 @@ const sendNotification = async (receiverFcmToken, sender_name, message) => {
     data: {
       title: `Message from ${sender_name}`,
       body: message,
-      icon: "http://localhost:5173/message.png",
+      icon: "https://chat-app-1500.web.app/message.png",
       // click_action: "FLUTTER_NOTIFICATION_CLICK"  // if using Flutter, for example
     },
     token: receiverFcmToken,
