@@ -49,7 +49,7 @@ module.exports = (pool) => {
       }
 
       // Construct public URL (adjust your URL as needed)
-      const publicURL = `https://your-supabase-url.supabase.co/storage/v1/object/public/chat-app/users/profile_pics/${fileName}`;
+      const publicURL = `https://phkzagefjrpswkdxvegp.supabase.co/storage/v1/object/public/chat-app/users/profile_pics/${fileName}`;
 
       // Update user profile in the database
       await updateUserProfile(userId, name, publicURL);
