@@ -29,7 +29,7 @@ const pool = new Pool({
 });
 
 pool.on("error", (err) => {
-  console.error("Unexpected Pool error:", err);
+  console.error("Unexpected Pool error:", err.message);
 });
 
 // Import routes

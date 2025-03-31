@@ -1,11 +1,39 @@
 // routes/chatRoutes.js
 import { Router } from "express";
+import {authentication} from "../auth/authentication.js";
+
 const router = Router();
 
 export default (pool) => {
+
+
+
+  router.get("/auth-messages", authentication , async (req,res) => {
+    const userId  = req.user.id;
+    const chatUserId = req.query.chatUserId;
+    console.log("user",userId);
+
+    try {
+      const result = await pool.query(
+        `SELECT * FROM messages
+        WHERE (sender = $1 AND receiver = $2) OR (sender = $2 AND receiver = $1)
+        ORDER BY created_at DESC`,
+        [userId,chatUserId]
+      );
+      res.status(200).json(result.rows);
+    } catch (err) {
+      console.error("Error getting user:", err);
+      res.status(500).json({ success: false, error: "Internal Server Error" });
+    }
+  })
+
+
+
+
   // Get messages between two users with offset-based pagination
-  router.get("/messages", async (req, res) => {
-    const { chatWith, currentUser, offset, limit } = req.query;
+  router.get("/messages", authentication , async (req, res) => {
+    const { chatWith, offset, limit } = req.query;
+    const currentUser = req.user.id; // Assuming you have user ID in the request
     const offsetVal = parseInt(offset, 10) || 0;
     const limitVal = parseInt(limit, 10) || 50;
     try {
@@ -25,8 +53,9 @@ export default (pool) => {
     }
   });
 
-  router.get("more-/messages", async (req, res) => {
-    const { chatWith, currentUser, offset = 0, limit = 50 } = req.query;
+  router.get("more-/messages", authentication , async (req, res) => {
+    const { chatWith, offset = 0, limit = 50 } = req.query;
+    const currentUser = req.user.id; // Assuming you have user ID in the request
     try {
       const query = `
       SELECT * FROM messages
